@@ -169,3 +169,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+venv/
+.venv/
+cancer/
+__pycache__/
+*.pyc
