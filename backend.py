@@ -1,25 +1,38 @@
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, relationship
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 import jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel
-from model_handler import ModelHandler
-from chatbot import ChatBot
-from report_generator import ReportGenerator
+from pydantic import BaseModel, validator
+from email_validator import validate_email, EmailNotValidError
 import os
 from dotenv import load_dotenv
+from model_handler import ModelHandler
+from chatbot import get_llama_response
 
 # Load environment variables
 load_dotenv()
 
+# App Configuration
+class Settings:
+    SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-here")
+    ALGORITHM = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES = 30
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/blood_cancer_db")
+
+settings = Settings()
+
 # FastAPI app setup
-app = FastAPI()
+app = FastAPI(
+    title="Blood Cancer Detection API",
+    description="Backend API for blood cancer detection system",
+    version="1.0.0"
+)
 
 # CORS middleware
 app.add_middleware(
@@ -31,56 +44,154 @@ app.add_middleware(
 )
 
 # Database setup
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+engine = create_engine(settings.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # Security
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Initialize handlers
+# Initialize ML model handler
 model_handler = ModelHandler()
-chatbot = ChatBot()
-report_generator = ReportGenerator()
 
 # Database Models
 class User(Base):
     __tablename__ = "users"
+
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    role = Column(String)
+    role = Column(String)  # "doctor" or "patient"
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+    
+    # Relationships
+    analyses = relationship("Analysis", back_populates="user")
+    # Patient appointments
+    patient_appointments = relationship(
+        "Appointment",
+        back_populates="patient",
+        foreign_keys="Appointment.patient_id"
+    )
+    # Doctor appointments
+    doctor_appointments = relationship(
+        "Appointment",
+        back_populates="doctor",
+        foreign_keys="Appointment.doctor_id"
+    )
 
-class Test(Base):
-    __tablename__ = "tests"
+class Analysis(Base):
+    __tablename__ = "analyses"
+
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer)
+    user_id = Column(Integer, ForeignKey("users.id"))
     date = Column(DateTime, default=datetime.utcnow)
     results = Column(JSON)
+    risk_level = Column(String)
+    doctor_notes = Column(String, nullable=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="analyses")
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("users.id"))
+    doctor_id = Column(Integer, ForeignKey("users.id"))
+    date = Column(DateTime)
+    status = Column(String)  # "scheduled", "completed", "cancelled"
+    notes = Column(String, nullable=True)
+    
+    # Relationships with explicit foreign keys
+    patient = relationship(
+        "User",
+        back_populates="patient_appointments",
+        foreign_keys=[patient_id]
+    )
+    doctor = relationship(
+        "User",
+        back_populates="doctor_appointments",
+        foreign_keys=[doctor_id]
+    )
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-# Pydantic models
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    role: str
-
+# Pydantic Models
 class UserBase(BaseModel):
     username: str
     email: str
     role: str
 
-# Dependencies
+    @validator('email')
+    def validate_email(cls, v):
+        try:
+            validate_email(v)
+            return v
+        except EmailNotValidError:
+            raise ValueError('Invalid email address')
+    
+    @validator('role')
+    def validate_role(cls, v):
+        if v.lower() not in ['doctor', 'patient']:
+            raise ValueError('Role must be either doctor or patient')
+        return v.lower()
+
+class UserCreate(UserBase):
+    password: str
+
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 6:
+            raise ValueError('Password must be at least 6 characters')
+        return v
+
+class UserResponse(UserBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    last_login: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    role: str
+    user_id: int
+
+class AnalysisCreate(BaseModel):
+    results: dict
+    risk_level: str
+    doctor_notes: Optional[str] = None
+
+class AnalysisResponse(AnalysisCreate):
+    id: int
+    user_id: int
+    date: datetime
+
+    class Config:
+        from_attributes = True
+
+class AppointmentCreate(BaseModel):
+    doctor_id: int
+    date: datetime
+    notes: Optional[str] = None
+
+class AppointmentResponse(AppointmentCreate):
+    id: int
+    patient_id: int
+    status: str
+
+    class Config:
+        from_attributes = True
+
+# Database Dependency
 def get_db():
     db = SessionLocal()
     try:
@@ -88,99 +199,130 @@ def get_db():
     finally:
         db.close()
 
-# Authentication functions
-def verify_password(plain_password, hashed_password):
+# Security Functions
+def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-def get_password_hash(password):
+def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
-def create_access_token(data: dict):
+def create_access_token(data: dict) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials"
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
     except jwt.JWTError:
         raise credentials_exception
+
     user = db.query(User).filter(User.username == username).first()
     if user is None:
         raise credentials_exception
     return user
 
-# API endpoints
-@app.post("/login")
+# API Endpoints
+@app.post("/register", response_model=UserResponse)
+async def register(user: UserCreate, db: Session = Depends(get_db)):
+    # Check existing username
+    if db.query(User).filter(User.username == user.username).first():
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    # Check existing email
+    if db.query(User).filter(User.email == user.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Create new user
+    hashed_password = get_password_hash(user.password)
+    db_user = User(
+        username=user.username,
+        email=user.email,
+        role=user.role,
+        hashed_password=hashed_password
+    )
+    
+    try:
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return db_user
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # Authenticate user
     user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password"
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token = create_access_token({"sub": user.username, "role": user.role})
-    return {"access_token": access_token, "token_type": "bearer", "role": user.role}
+    # Update last login
+    user.last_login = datetime.utcnow()
+    db.commit()
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": user.username})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": user.role,
+        "user_id": user.id
+    }
 
-@app.post("/analyze")
+@app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_image(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     try:
-        # Process image using model handler
+        # Process image
         results = await model_handler.process_image(file)
         
-        # Save results to database
-        test = Test(user_id=current_user.id, results=results)
-        db.add(test)
+        # Save analysis
+        analysis = Analysis(
+            user_id=current_user.id,
+            results=results,
+            risk_level=results["risk_assessment"]
+        )
+        db.add(analysis)
         db.commit()
+        db.refresh(analysis)
         
-        return results
+        return analysis
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat")
 async def chat(
-    message: str,
+    message: dict,
     current_user: User = Depends(get_current_user)
 ):
     try:
-        response = await chatbot.get_response(message)
+        response = get_llama_response(
+            message["text"],
+            language=message.get("language", "English")
+        )
         return {"response": response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/generate_report")
-async def generate_report(
-    patient_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    if current_user.role != "doctor":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    try:
-        # Get patient's test history
-        tests = db.query(Test).filter(Test.user_id == patient_id).all()
-        
-        # Generate report
-        report = report_generator.generate(tests)
-        return {"content": report}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/patients")
+@app.get("/patients", response_model=List[UserResponse])
 async def get_patients(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -188,10 +330,9 @@ async def get_patients(
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    patients = db.query(User).filter(User.role == "patient").all()
-    return patients
+    return db.query(User).filter(User.role == "patient").all()
 
-@app.get("/patient/{patient_id}/history")
+@app.get("/patient/{patient_id}/history", response_model=List[AnalysisResponse])
 async def get_patient_history(
     patient_id: int,
     current_user: User = Depends(get_current_user),
@@ -200,27 +341,63 @@ async def get_patient_history(
     if current_user.role != "doctor" and current_user.id != patient_id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    tests = db.query(Test).filter(Test.user_id == patient_id).all()
-    return tests
+    return db.query(Analysis).filter(Analysis.user_id == patient_id).all()
 
-# Add user creation endpoint
-@app.post("/users/", response_model=UserBase)
-async def create_user(user_data: UserBase, password: str, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user_data.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
+@app.post("/appointment", response_model=AppointmentResponse)
+async def create_appointment(
+    appointment: AppointmentCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Verify doctor exists and is active
+    doctor = db.query(User).filter(
+        User.id == appointment.doctor_id,
+        User.role == "doctor",
+        User.is_active == True
+    ).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
     
-    hashed_password = get_password_hash(password)
-    db_user = User(
-        username=user_data.username,
-        email=user_data.email,
-        role=user_data.role,
-        hashed_password=hashed_password
+    # Create appointment
+    db_appointment = Appointment(
+        patient_id=current_user.id,
+        doctor_id=appointment.doctor_id,
+        date=appointment.date,
+        status="scheduled",
+        notes=appointment.notes
     )
-    db.add(db_user)
+    db.add(db_appointment)
     db.commit()
-    db.refresh(db_user)
-    return db_user
+    db.refresh(db_appointment)
+    
+    return db_appointment
+
+@app.get("/appointments", response_model=List[AppointmentResponse])
+async def get_appointments(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role == "doctor":
+        return db.query(Appointment).filter(Appointment.doctor_id == current_user.id).all()
+    else:
+        return db.query(Appointment).filter(Appointment.patient_id == current_user.id).all()
+
+@app.get("/active-patients", response_model=List[UserResponse])
+async def get_active_patients(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    return (
+        db.query(User)
+        .join(Analysis)
+        .filter(User.role == "patient")
+        .filter(Analysis.risk_level.contains("High"))
+        .distinct()
+        .all()
+    )
 
 if __name__ == "__main__":
     import uvicorn
