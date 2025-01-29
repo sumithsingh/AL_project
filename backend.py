@@ -1,9 +1,11 @@
+import logging
 from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
+from chatbot import FreeMedicalChatbot
 from datetime import datetime, timedelta
 from typing import Optional, List
 import jwt
@@ -13,7 +15,7 @@ from email_validator import validate_email, EmailNotValidError
 import os
 from dotenv import load_dotenv
 from model_handler import ModelHandler
-from chatbot import get_llama_response
+
 
 # Load environment variables
 load_dotenv()
@@ -70,6 +72,7 @@ class User(Base):
     
     # Relationships
     analyses = relationship("Analysis", back_populates="user")
+    chat_logs = relationship("ChatLog", back_populates="user")  # Add this line here
     # Patient appointments
     patient_appointments = relationship(
         "Appointment",
@@ -158,6 +161,18 @@ class UserResponse(UserBase):
 
     class Config:
         from_attributes = True
+        
+class ChatLog(Base):
+    __tablename__ = "chat_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    message = Column(String)
+    response = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationship
+    user = relationship("User", back_populates="chat_logs")
 
 class Token(BaseModel):
     access_token: str
@@ -314,12 +329,33 @@ async def chat(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        response = get_llama_response(
+        # Initialize chatbot
+        chatbot = FreeMedicalChatbot()
+        
+        # Get response
+        response = chatbot.get_response(
             message["text"],
             language=message.get("language", "English")
         )
-        return {"response": response}
+        
+        # Log chat for the user
+        try:
+            db = SessionLocal()
+            chat_log = ChatLog(
+                user_id=current_user.id,
+                message=message["text"],
+                response=response["response"],
+                timestamp=datetime.utcnow()
+            )
+            db.add(chat_log)
+            db.commit()
+        except Exception as e:
+            logging.error(f"Error logging chat: {e}")
+        
+        return response
+        
     except Exception as e:
+        logging.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/patients", response_model=List[UserResponse])

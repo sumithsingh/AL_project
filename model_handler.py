@@ -6,6 +6,8 @@ from PIL import Image
 import io
 import logging
 import os
+from datetime import datetime
+from fastapi import HTTPException
 
 class ModelHandler:
     def __init__(self):
@@ -22,7 +24,7 @@ class ModelHandler:
                 raise FileNotFoundError(f"Model file not found at {model_path}")
             
             self.model = load_model(model_path)
-            self.model.summary()  # Print model summary for verification
+            self.model.summary()
             logging.info("Model loaded successfully")
         except Exception as e:
             logging.error(f"Error loading model: {e}")
@@ -30,20 +32,18 @@ class ModelHandler:
 
     def preprocess_image(self, image: Image.Image) -> np.ndarray:
         try:
-            # Convert to grayscale (single channel)
+            # Convert to grayscale
             image = image.convert('L')
             
             # Resize to expected dimensions
             image = image.resize(self.input_shape)
             
-            # Convert to array and add channel dimension
-            img_array = img_to_array(image)
+            # Convert to array
+            img_array = np.array(image)
             
-            # Ensure single channel and normalize
-            img_array = img_array[..., np.newaxis] / 255.0
-            
-            # Add batch dimension
-            img_array = np.expand_dims(img_array, axis=0)
+            # Normalize and reshape
+            img_array = img_array.astype(float) / 255.0
+            img_array = img_array.reshape((1, 224, 224, 1))
             
             logging.info(f"Preprocessed image shape: {img_array.shape}")
             return img_array
@@ -55,14 +55,14 @@ class ModelHandler:
         try:
             if self.model is None:
                 raise ValueError("Model not loaded")
-            
-            # Verify input shape
-            expected_shape = (1, 224, 224, 1)
-            if img_array.shape != expected_shape:
-                logging.error(f"Expected shape {expected_shape}, got {img_array.shape}")
-                raise ValueError(f"Invalid input shape. Expected {expected_shape}, got {img_array.shape}")
+
+            # Ensure correct shape
+            if img_array.shape != (1, 224, 224, 1):
+                logging.error(f"Invalid input shape: {img_array.shape}")
+                raise ValueError(f"Invalid input shape: {img_array.shape}")
             
             predictions = self.model.predict(img_array, verbose=0)
+            logging.info(f"Prediction shape: {predictions.shape}")
             return predictions[0]
         except Exception as e:
             logging.error(f"Error getting predictions: {e}")
@@ -70,11 +70,9 @@ class ModelHandler:
 
     def assess_risk(self, predictions: np.ndarray) -> tuple:
         try:
-            # Get myeloblast percentage
             myeloblast_idx = self.classes.index('myeloblast')
-            myeloblast_percentage = predictions[myeloblast_idx] * 100
-
-            # Risk assessment logic
+            myeloblast_percentage = float(predictions[myeloblast_idx] * 100)
+            
             if myeloblast_percentage > 20:
                 return "High", "Immediate medical attention required"
             elif myeloblast_percentage > 10:
@@ -117,6 +115,9 @@ class ModelHandler:
             image_data = await file.read()
             image = Image.open(io.BytesIO(image_data))
             
+            # Log original image details
+            logging.info(f"Original image size: {image.size}, mode: {image.mode}")
+            
             # Preprocess image
             processed_image = self.preprocess_image(image)
             
@@ -129,13 +130,12 @@ class ModelHandler:
             # Generate recommendations
             recommendations = self.generate_recommendations(risk_level)
             
-            # Calculate cell counts
+            # Calculate cell percentages
             cell_counts = {
                 cell_type: float(pred * 100)
                 for cell_type, pred in zip(self.classes, predictions)
             }
             
-            # Prepare detailed results
             return {
                 "cell_counts": cell_counts,
                 "risk_assessment": f"{risk_level} Risk - {risk_message}",
