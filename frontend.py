@@ -2,32 +2,35 @@ import streamlit as st
 import requests
 from PIL import Image
 import io
-import json
 from datetime import datetime
 
 class BloodCancerApp:
     def __init__(self):
-        st.set_page_config(
-            page_title="Blood Cancer Detection System",
-            layout="wide",
-            initial_sidebar_state="expanded"
-        )
-        self.initialize_session()
+        # Set the API URL for your backend service
         self.API_URL = "http://localhost:8000"
-
+        # Initialize session state
+        self.initialize_session()
+    
     def initialize_session(self):
+        # Initialize session state variables if they are not already set
         if 'authenticated' not in st.session_state:
             st.session_state.authenticated = False
+        if 'user_type' not in st.session_state:
             st.session_state.user_type = None
+        if 'user_token' not in st.session_state:
             st.session_state.user_token = None
+        if 'language' not in st.session_state:
             st.session_state.language = "English"
-            st.session_state.show_assistant = False
+        if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
+        if 'user_id' not in st.session_state:
             st.session_state.user_id = None
 
     def main(self):
+        # Set custom CSS for Streamlit components
         self.set_custom_css()
         
+        # Show the login page or user-specific dashboard
         if not st.session_state.authenticated:
             self.show_auth_page()
         else:
@@ -93,10 +96,21 @@ class BloodCancerApp:
                 border: 1px solid #ef5350;
             }
             .relevant-info {
-                background-color: #e3f2fd;
+                background-color: #2c3e50;
+                color: #ecf0f1;
                 padding: 1rem;
                 border-radius: 0.5rem;
                 margin: 0.5rem 0;
+            }
+            .relevant-info strong {
+                    font-weight: bold;
+                    color: #3498db;
+            }
+            .stButton button {
+                    background-color: #2980b9; /* Change button color to a stronger blue */
+            }
+            .stButton button:hover {
+                    background-color: #1abc9c; /* Green hover effect */
             }
             .chat-meta {
                 font-size: 0.8rem;
@@ -203,88 +217,85 @@ class BloodCancerApp:
     def show_chat_interface(self):
         st.header("Chat with AI Assistant")
         
-        # Display chat history
-        for message in st.session_state.chat_history:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
+        # Display chat history with proper formatting
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                # Display main response
+                st.markdown(msg["content"])
                 
-                # Display relevant information if available
-                if message.get("relevant_info"):
-                    with st.expander("View Related Medical Information"):
-                        for info in message["relevant_info"]:
+                # Display emergency alert if needed
+                if msg.get("is_emergency"):
+                    st.error("⚠️ EMERGENCY: Seek immediate medical attention!")
+                
+                # Display relevant information expander
+                if msg.get("relevant_info"):
+                    with st.expander("Related Medical Information", expanded=True):
+                        for info in msg["relevant_info"]:
                             st.markdown(f"""
-                                <div class='relevant-info'>
-                                    <strong>{info['category']}</strong>: {info['information']}
-                                </div>
+                            <div class='relevant-info'>
+                                <strong>{info['category'].title()}</strong>: {info['text']}
+                                <div class='chat-meta'>Relevance: {info['relevance_score']:.2f}</div>
+                            </div>
                             """, unsafe_allow_html=True)
-                
-                # Display emergency warning if necessary
-                if message.get("is_emergency"):
-                    st.markdown("""
-                        <div class='emergency-alert'>
-                            ⚠️ This appears to be a medical emergency. Please seek immediate medical attention!
-                        </div>
-                    """, unsafe_allow_html=True)
         
-        # Chat input
-        if prompt := st.chat_input("Type your message here..."):
-            st.session_state.chat_history.append({
-                "role": "user",
-                "content": prompt
-            })
+        # Input handling
+        if prompt := st.chat_input("Type your message..."):
+            self._handle_chat_input(prompt)
+
+    def _handle_chat_input(self, prompt: str):
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        
+        try:
+            response = requests.post(
+                f"{self.API_URL}/chat",
+                headers={"Authorization": f"Bearer {st.session_state.user_token}"},
+                json={
+                    "text": prompt,
+                    "language": st.session_state.language
+                }
+            )
             
-            try:
-                with st.spinner("Getting response..."):
-                    response = requests.post(
-                        f"{self.API_URL}/chat",
-                        headers={"Authorization": f"Bearer {st.session_state.user_token}"},
-                        json={
-                            "text": prompt,
-                            "language": st.session_state.language
-                        }
-                    )
-                    
-                    if response.status_code == 200:
-                        response_data = response.json()
-                        st.session_state.chat_history.append({
-                            "role": "assistant",
-                            "content": response_data["response"],
-                            "relevant_info": response_data.get("relevant_info", []),
-                            "is_emergency": response_data.get("is_emergency", False)
-                        })
-                    else:
-                        st.error("Failed to get response from assistant")
-                        
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-            
-            st.rerun()
+            if response.status_code == 200:
+                data = response.json()
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": data["response"],
+                    "relevant_info": data.get("relevant_info", []),
+                    "is_emergency": data.get("is_emergency", False)
+                })
+            else:
+                st.error("Failed to get chatbot response")
+                
+        except Exception as e:
+            st.error(f"Chat error: {str(e)}")
+        
+        st.rerun()
 
     def show_upload_page(self):
         st.header("Upload Blood Test Images")
+    
+        uploaded_files = st.file_uploader(
+            "Choose blood cell images",
+            type=['png', 'jpg', 'jpeg'],
+            accept_multiple_files=True
+        )
         
-        with st.container():
-            uploaded_files = st.file_uploader(
-                "Choose blood cell images",
-                type=['png', 'jpg', 'jpeg'],
-                accept_multiple_files=True
-            )
+        if uploaded_files:
+            st.write(f"Number of files uploaded: {len(uploaded_files)}")
             
-            if uploaded_files:
-                st.write(f"Number of files uploaded: {len(uploaded_files)}")
-                
-                cols = st.columns(3)
-                for idx, file in enumerate(uploaded_files):
-                    with cols[idx % 3]:
-                        st.image(file, caption=file.name, use_column_width=True)
-                
-                if st.button("Analyze Images"):
-                    self.analyze_images(uploaded_files)
+            cols = st.columns(3)
+            for idx, file in enumerate(uploaded_files):
+                with cols[idx % 3]:
+                    st.image(file, caption=file.name, use_column_width=True)
+            
+            if st.button("Analyze Images"):
+                self.analyze_images(uploaded_files)
 
     def analyze_images(self, files):
         with st.spinner("Analyzing images..."):
             results = []
             progress_bar = st.progress(0)
+            error_messages = []
             
             for i, file in enumerate(files):
                 try:
@@ -307,53 +318,83 @@ class BloodCancerApp:
                     progress_bar.progress(progress)
                     
                 except Exception as e:
-                    st.error(f"Error processing {file.name}: {str(e)}")
-            
-            if results:
-                self.display_analysis_results(results)
+                    error_messages.append(f"{file.name}: {str(e)}")
+                    progress_bar.progress((i + 1) / len(files))
+
+        if error_messages:
+            st.error("Failed to analyze:\n- " + "\n- ".join(error_messages))
+
+        if results:
+            self.display_analysis_results(results)
 
     def display_analysis_results(self, results):
         st.subheader("Analysis Results")
-        
+    
+        # Create a DataFrame for tabular display
+        import pandas as pd
+        result_data = []
+    
         for result in results:
-            with st.expander(f"Results for {result['filename']}", expanded=True):
+            analysis = result['analysis']
+            row = {
+                'Filename': result['filename'],
+                'Risk Level': analysis['risk_assessment'].split(' - ')[0],
+                'Confidence Score': f"{analysis['details']['confidence_score']:.1f}%",
+                **analysis['cell_counts']
+                }
+            result_data.append(row)
+
+        df = pd.DataFrame(result_data)
+
+        # Display as interactive table
+        st.dataframe(
+            df,
+            column_config={
+                "Confidence": st.column_config.ProgressColumn(
+                    format="%.1f%%",
+                    min_value=0,
+                    max_value=100
+                )
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+        # Add expandable details for each result
+
+        from report_generator import ReportGenerator
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            reporter = ReportGenerator()
+            pdf_content = reporter.generate(
+                test_data=results,
+                patient_info={
+                    "id": st.session_state.user_id,
+                    "name": st.session_state.get("username", "Patient")
+                }
+            )
+        tmp.write(pdf_content)
+        st.download_button(
+            "Download Full Report",
+            data=pdf_content,
+            file_name="blood_analysis.pdf",
+            mime="application/pdf"
+        )
+
+
+        for result in results:
+            with st.expander(f"Details for {result['filename']}"):
                 analysis = result['analysis']
-                
-                # Cell distribution
-                st.write("### Cell Type Distribution")
-                cell_counts = analysis.get('cell_counts', {})
-                if cell_counts:
-                    cell_cols = st.columns(len(cell_counts))
-                    for i, (cell_type, count) in enumerate(cell_counts.items()):
-                        with cell_cols[i]:
-                            st.metric(
-                                label=cell_type.replace("_", " ").title(),
-                                value=f"{count:.1f}%"
-                            )
-                
-                # Risk assessment
-                st.write("### Risk Assessment")
-                risk_level = analysis.get('risk_assessment', '')
-                if "High" in risk_level:
-                    st.error(risk_level)
-                elif "Moderate" in risk_level:
-                    st.warning(risk_level)
-                else:
-                    st.success(risk_level)
-                
-                # Recommendations
-                st.write("### Recommendations")
-                for rec in analysis.get('recommendations', []):
-                    st.write(f"• {rec}")
-                
-                # Additional details
-                if details := analysis.get('details'):
-                    st.write("### Additional Details")
-                    cols = st.columns(2)
-                    with cols[0]:
-                        st.write(f"Analysis Date: {details.get('analysis_date', 'N/A')}")
-                    with cols[1]:
-                        st.write(f"Confidence Score: {details.get('confidence_score', 0):.1f}%")
+                st.write(f"**Risk Level:** {analysis['risk_assessment']}")
+                st.write("**Cell Distribution:**")
+                st.bar_chart(pd.DataFrame.from_dict(
+                    analysis['cell_counts'], 
+                    orient='index',
+                    columns=['Percentage']
+                ))
+                st.write("**Recommendations:**")
+                for rec in analysis['recommendations']:
+                    st.write(f"- {rec}")
 
     def show_doctor_interface(self):
         st.title("Doctor Dashboard")
@@ -417,7 +458,7 @@ class BloodCancerApp:
                         # Add doctor notes
                         notes = st.text_area(
                             "Doctor Notes",
-                            value=analysis.get('doctor_notes', ''),
+                            value=analysis.get('doctor_notes', ''), 
                             key=f"notes_{analysis['id']}"
                         )
                         if st.button("Save Notes", key=f"save_{analysis['id']}"):
@@ -533,6 +574,7 @@ class BloodCancerApp:
                                 appointment_time
                             )
                             
+
                             response = requests.post(
                                 f"{self.API_URL}/appointment",
                                 headers={"Authorization": f"Bearer {st.session_state.user_token}"},

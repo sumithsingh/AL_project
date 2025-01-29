@@ -13,6 +13,8 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, validator
 from email_validator import validate_email, EmailNotValidError
 import os
+from PIL import Image
+import io
 from dotenv import load_dotenv
 from model_handler import ModelHandler
 
@@ -306,57 +308,72 @@ async def analyze_image(
     db: Session = Depends(get_db)
 ):
     try:
-        # Process image
-        results = await model_handler.process_image(file)
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(400, "Only image files are allowed")
+
+        # Read and validate image
+        image_data = await file.read()
+        image = Image.open(io.BytesIO(image_data))
+
+        image = image.convert("L")
         
-        # Save analysis
+        
+        processed_image = model_handler.preprocess_image(image)
+
+        predictions = model_handler.get_predictions(processed_image)
+
+        risk_level, risk_message = model_handler.assess_risk(predictions)
+        recommendations = model_handler.generate_recommendations(risk_level)
+
         analysis = Analysis(
             user_id=current_user.id,
-            results=results,
-            risk_level=results["risk_assessment"]
+            results={"cell_counts": predictions.tolist(), "risk_assessment": risk_message},
+            risk_level=risk_level
         )
+
         db.add(analysis)
         db.commit()
         db.refresh(analysis)
-        
+
+        # Rest of processing...
         return analysis
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Analysis error: {str(e)}")
+        raise HTTPException(500, "Image processing error")
+    
+global_chatbot = FreeMedicalChatbot()
 
 @app.post("/chat")
 async def chat(
     message: dict,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     try:
-        # Initialize chatbot
-        chatbot = FreeMedicalChatbot()
-        
-        # Get response
-        response = chatbot.get_response(
-            message["text"],
+        response = global_chatbot.get_response(
+            query=message["text"],
             language=message.get("language", "English")
         )
         
-        # Log chat for the user
-        try:
-            db = SessionLocal()
-            chat_log = ChatLog(
-                user_id=current_user.id,
-                message=message["text"],
-                response=response["response"],
-                timestamp=datetime.utcnow()
-            )
-            db.add(chat_log)
-            db.commit()
-        except Exception as e:
-            logging.error(f"Error logging chat: {e}")
+        # Log chat with user context
+        chat_log = ChatLog(
+            user_id=current_user.id,
+            message=message["text"],
+            response=response["response"],
+            timestamp=datetime.utcnow()
+        )
+        db.add(chat_log)
+        db.commit()
         
         return response
         
     except Exception as e:
         logging.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 @app.get("/patients", response_model=List[UserResponse])
 async def get_patients(
