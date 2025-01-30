@@ -1,8 +1,9 @@
+import tempfile
 import streamlit as st
 import requests
 from PIL import Image
 import io
-from datetime import datetime
+import datetime
 
 class BloodCancerApp:
     def __init__(self):
@@ -25,6 +26,8 @@ class BloodCancerApp:
             st.session_state.chat_history = []
         if 'user_id' not in st.session_state:
             st.session_state.user_id = None
+        if 'reports' not in st.session_state:
+            st.session_state.reports = []
 
     def main(self):
         # Set custom CSS for Streamlit components
@@ -294,32 +297,28 @@ class BloodCancerApp:
     def analyze_images(self, files):
         with st.spinner("Analyzing images..."):
             results = []
-            progress_bar = st.progress(0)
             error_messages = []
             
-            for i, file in enumerate(files):
+            for file in files:
                 try:
                     files_data = {"file": (file.name, file.getvalue(), "image/jpeg")}
                     response = requests.post(
                         f"{self.API_URL}/analyze",
                         files=files_data,
-                        headers={"Authorization": f"Bearer {st.session_state.user_token}"}
+                        headers={"Authorization": f"Bearer {st.session_state.get('user_token', '')}"}
                     )
                     
                     if response.status_code == 200:
-                        results.append({
-                            "filename": file.name,
-                            "analysis": response.json()
-                        })
+                        analysis_data = response.json()
+                        results.append({"filename": file.name, "analysis": analysis_data})
                     else:
-                        st.error(f"Error analyzing {file.name}")
+                        error_messages.append(f"Error analyzing {file.name}")
+
+                       
                     
-                    progress = (i + 1) / len(files)
-                    progress_bar.progress(progress)
                     
                 except Exception as e:
                     error_messages.append(f"{file.name}: {str(e)}")
-                    progress_bar.progress((i + 1) / len(files))
 
         if error_messages:
             st.error("Failed to analyze:\n- " + "\n- ".join(error_messages))
@@ -329,72 +328,68 @@ class BloodCancerApp:
 
     def display_analysis_results(self, results):
         st.subheader("Analysis Results")
-    
-        # Create a DataFrame for tabular display
+        
         import pandas as pd
         result_data = []
-    
+        
         for result in results:
             analysis = result['analysis']
+        
+            # Handle missing 'risk_assessment'
+            risk_assessment = analysis.get('risk_assessment', 'Unknown')
+
+            # Handle missing 'confidence_score'
+            confidence_score = analysis.get('details', {}).get('confidence_score', 0)
+            
             row = {
                 'Filename': result['filename'],
-                'Risk Level': analysis['risk_assessment'].split(' - ')[0],
-                'Confidence Score': f"{analysis['details']['confidence_score']:.1f}%",
-                **analysis['cell_counts']
-                }
+                'Risk Level': risk_assessment.split(' - ')[0],
+                'Confidence Score': f"{confidence_score:.1f}%",
+                **analysis.get('cell_counts', {})  
+            }
             result_data.append(row)
-
+        
         df = pd.DataFrame(result_data)
 
-        # Display as interactive table
-        st.dataframe(
-            df,
-            column_config={
-                "Confidence": st.column_config.ProgressColumn(
-                    format="%.1f%%",
-                    min_value=0,
-                    max_value=100
-                )
-            },
-            hide_index=True,
-            use_container_width=True
-        )
-        # Add expandable details for each result
+        st.dataframe(df, hide_index=True, use_container_width=True)
+        # Display interactive table
 
+        self.generate_report(results)
+       
+    def generate_report(self, results):
         from report_generator import ReportGenerator
-        import tempfile
-
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             reporter = ReportGenerator()
             pdf_content = reporter.generate(
-                test_data=results,
+                test_data=[res["analysis"] for res in results],
                 patient_info={
-                    "id": st.session_state.user_id,
+                    "id": st.session_state.get("user_id", "Unknown"),
                     "name": st.session_state.get("username", "Patient")
                 }
             )
-        tmp.write(pdf_content)
-        st.download_button(
-            "Download Full Report",
-            data=pdf_content,
-            file_name="blood_analysis.pdf",
-            mime="application/pdf"
-        )
+            if "reports" not in st.session_state:
+                st.session_state.reports = []
 
+            report_entry = {
+                "filename": f"blood_analysis_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                "date": datetime.datetime.now().isoformat(),
+                "pdf_content": pdf_content
+            }
+            
+            st.session_state.reports.append(report_entry)
 
-        for result in results:
-            with st.expander(f"Details for {result['filename']}"):
-                analysis = result['analysis']
-                st.write(f"**Risk Level:** {analysis['risk_assessment']}")
-                st.write("**Cell Distribution:**")
-                st.bar_chart(pd.DataFrame.from_dict(
-                    analysis['cell_counts'], 
-                    orient='index',
-                    columns=['Percentage']
-                ))
-                st.write("**Recommendations:**")
-                for rec in analysis['recommendations']:
-                    st.write(f"- {rec}")
+            # Ensure the key is unique by using timestamp
+            st.download_button(
+                label="Download Full Report",
+                data=pdf_content,
+                file_name=report_entry["filename"],
+                mime="application/pdf",
+                key=f"download_report_{report_entry['date']}"
+            )
+
+            
+
+            
 
     def show_doctor_interface(self):
         st.title("Doctor Dashboard")

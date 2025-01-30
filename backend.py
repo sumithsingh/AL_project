@@ -1,5 +1,5 @@
 import logging
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status, Request
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status, Request, APIRouter
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, Boolean, ForeignKey
@@ -14,6 +14,7 @@ from pydantic import BaseModel, validator
 from email_validator import validate_email, EmailNotValidError
 import os
 from PIL import Image
+import numpy as np
 import io
 from dotenv import load_dotenv
 from model_handler import ModelHandler
@@ -57,6 +58,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Initialize ML model handler
+router = APIRouter()
 model_handler = ModelHandler()
 
 # Database Models
@@ -309,38 +311,50 @@ async def analyze_image(
 ):
     try:
         if not file.content_type.startswith('image/'):
-            raise HTTPException(400, "Only image files are allowed")
+            raise HTTPException(status_code=400, detail="Only image files are allowed")
 
-        # Read and validate image
         image_data = await file.read()
         image = Image.open(io.BytesIO(image_data))
 
-        image = image.convert("L")
-        
-        
         processed_image = model_handler.preprocess_image(image)
-
         predictions = model_handler.get_predictions(processed_image)
 
         risk_level, risk_message = model_handler.assess_risk(predictions)
         recommendations = model_handler.generate_recommendations(risk_level)
 
+        analysis_data = {
+            "cell_counts": {cell: float(pred * 100) for cell, pred in zip(model_handler.classes, predictions)},
+            "risk_assessment": risk_message if risk_message else "Unknown",
+            "recommendations": recommendations if recommendations else ["No recommendations available"],
+            "details": {
+                "myeloblast_percentage": float(predictions[model_handler.classes.index('myeloblast')] * 100),
+                "analysis_date": datetime.utcnow().isoformat(),
+                "confidence_score": float(np.max(predictions) * 100)
+            }
+        }
+
         analysis = Analysis(
             user_id=current_user.id,
-            results={"cell_counts": predictions.tolist(), "risk_assessment": risk_message},
-            risk_level=risk_level
+            results=analysis_data,
+            risk_level=risk_level,
+            date=datetime.utcnow()
         )
 
         db.add(analysis)
         db.commit()
         db.refresh(analysis)
 
-        # Rest of processing...
-        return analysis
-        
+        return {
+            "id": analysis.id,
+            "user_id": analysis.user_id,
+            "date": analysis.date.isoformat(),
+            "results": analysis.results,
+            "risk_level": analysis.risk_level
+        }
+
     except Exception as e:
-        logging.error(f"Analysis error: {str(e)}")
-        raise HTTPException(500, "Image processing error")
+        logging.error(f"Analysis error: {e}")
+        raise HTTPException(status_code=500, detail="Image processing error")
     
 global_chatbot = FreeMedicalChatbot()
 
