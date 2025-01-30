@@ -18,50 +18,61 @@ class ModelHandler:
         try:
             model_path = os.path.join('model', 'blood_cancer_model.keras')
             if not os.path.exists(model_path):
+                logging.error(f"Model file NOT found at {model_path}")
                 raise FileNotFoundError(f"Model file not found at {model_path}")
             
             self.model = load_model(model_path)
-            logging.info("Model loaded successfully")
+            logging.info("✅ Model loaded successfully")
         except Exception as e:
-            logging.error(f"Error loading model: {e}")
+            logging.error(f"❌ Error loading model: {e}")
             raise
 
     def preprocess_image(self, image: Image.Image) -> np.ndarray:
         try:
-            # Convert image to grayscale if it's not already
-            image = image.convert('L')  # Ensures 1 channel (grayscale)
-            image = image.resize((224, 224))  # Resize to model input shape
-            
-            # Convert to array, normalize, and reshape
+            image = image.convert('L')
+            image = image.resize((224, 224))
             img_array = np.array(image, dtype=np.float32) / 255.0
-            img_array = img_array.reshape((224, 224, 1))  # Maintain grayscale shape
-            img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
+            img_array = img_array.reshape((224, 224, 1))
+            img_array = np.expand_dims(img_array, axis=0)
+
+            logging.info(f"🖼 Processed Image Shape: {img_array.shape}")
             return img_array
         except Exception as e:
-            logging.error(f"Error preprocessing image: {e}")
+            logging.error(f"❌ Error preprocessing image: {e}")
             raise
 
     def get_predictions(self, img_array: np.ndarray) -> np.ndarray:
         try:
             if self.model is None:
-                raise ValueError("Model not loaded")
+                logging.error("🚨 Model is not loaded!")
+                raise ValueError("Model not loaded properly. Check if the model file exists.")
 
-            # Validate shape before passing to model
             if img_array.shape != (1, 224, 224, 1):  
-                logging.error(f"Invalid input shape: {img_array.shape}")
+                logging.error(f"❌ Invalid input shape: {img_array.shape}")
                 raise ValueError(f"Invalid input shape: {img_array.shape}")
 
-            # Get predictions from the model
-            predictions = self.model.predict(img_array, verbose=0)  # Removed verbosity for cleaner logs
+            logging.info("📊 Running model prediction...")
+            predictions = self.model.predict(img_array, verbose=0)
+            logging.info(f"🧬 Raw Predictions: {predictions}")
+
+            if predictions is None or not isinstance(predictions, np.ndarray) or len(predictions) == 0:
+                logging.error("❌ Model returned empty predictions!")
+                raise ValueError("Model returned empty predictions.")
+
             return predictions[0]
         except Exception as e:
-            logging.error(f"Error getting predictions: {e}")
+            logging.error(f"❌ Error getting predictions: {e}")
             raise
 
     def assess_risk(self, predictions: np.ndarray) -> tuple:
         try:
+            if "myeloblast" not in self.classes:
+                raise ValueError("Myeloblast class not found in model classes.")
+
             myeloblast_idx = self.classes.index('myeloblast')
             myeloblast_percentage = float(predictions[myeloblast_idx] * 100)
+
+            logging.info(f"🔬 Myeloblast Percentage: {myeloblast_percentage}%")
 
             if myeloblast_percentage > 20:
                 return "High", "Immediate medical attention required"
@@ -70,7 +81,7 @@ class ModelHandler:
             else:
                 return "Low", "Regular monitoring advised"
         except Exception as e:
-            logging.error(f"Error assessing risk: {e}")
+            logging.error(f"❌ Error assessing risk: {e}")
             raise
 
     def generate_recommendations(self, risk_level: str) -> list:
@@ -101,35 +112,23 @@ class ModelHandler:
 
     async def process_image(self, image_data: bytes) -> dict:
         try:
-            # Read and process the image file
             image = Image.open(io.BytesIO(image_data))
             logging.info(f"Processing {image.format} image: {image.size}x{image.mode}")
 
-            # Preprocess the image
             processed_image = self.preprocess_image(image)
-
-            # Get predictions
             predictions = self.get_predictions(processed_image)
 
-            # Ensure predictions are valid before applying np.max()
-            if predictions is None or not isinstance(predictions, np.ndarray):
-                raise ValueError("Invalid predictions received")
-
             cell_counts = {cell: float(pred * 100) for cell, pred in zip(self.classes, predictions)}
-
-            # Assess risk and provide recommendations
             risk_level, risk_message = self.assess_risk(predictions)
-
-            # ✅ Fix: Ensure predictions are valid before applying np.max()
             confidence_score = float(np.max(predictions) * 100) if predictions.size > 0 else 0.0
 
+            logging.info(f"Final Risk Level: {risk_level}, Confidence Score: {confidence_score}%")
 
-            response_data = {
-                "id": datetime.utcnow().strftime("%Y%m%d%H%M%S"),  # Generate a unique ID
-                "user_id": user_id,  # Include user ID
-                "date": datetime.utcnow().isoformat(),  # Ensure date is included
-                "risk_level": risk_level,  # Ensure risk level is included
-                "results": {  # Wrap the analysis results inside 'results'
+            return {
+                "id": datetime.utcnow().strftime("%Y%m%d%H%M%S"),
+                "date": datetime.utcnow().isoformat(),
+                "risk_level": risk_level,
+                "results": {
                     "cell_counts": cell_counts,
                     "risk_assessment": f"{risk_level} Risk - {risk_message}",
                     "recommendations": self.generate_recommendations(risk_level),
@@ -140,9 +139,6 @@ class ModelHandler:
                     }
                 }
             }
-
-            return response_data
-        
         except Exception as e:
-            logging.error(f"Error processing image: {e}")
+            logging.error(f"❌ Error processing image: {e}")
             raise

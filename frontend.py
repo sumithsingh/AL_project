@@ -1,3 +1,4 @@
+import logging
 import tempfile
 import streamlit as st
 import requests
@@ -28,6 +29,8 @@ class BloodCancerApp:
             st.session_state.user_id = None
         if 'reports' not in st.session_state:
             st.session_state.reports = []
+        if st.session_state.authenticated:
+            self.fetch_reports()
 
     def main(self):
         # Set custom CSS for Streamlit components
@@ -341,40 +344,45 @@ class BloodCancerApp:
             # Handle missing 'confidence_score'
             confidence_score = analysis.get('details', {}).get('confidence_score', 0)
             
+            cell_counts = analysis.get('cell_counts', {})
+
             row = {
                 'Filename': result['filename'],
                 'Risk Level': risk_assessment.split(' - ')[0],
                 'Confidence Score': f"{confidence_score:.1f}%",
-                **analysis.get('cell_counts', {})  
+                **cell_counts  
             }
             result_data.append(row)
         
         df = pd.DataFrame(result_data)
 
-        st.dataframe(df, hide_index=True, use_container_width=True)
-        # Display interactive table
-
-        self.generate_report(results)
+        if result_data:
+            df = pd.DataFrame(result_data)
+            st.dataframe(df, hide_index=True, use_container_width=True)
+        else:
+            st.warning("No valid results to display.")
        
-    def generate_report(self, results):
+    def generate_report(self, report):
         from report_generator import ReportGenerator
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             reporter = ReportGenerator()
             pdf_content = reporter.generate(
-                test_data=[res["analysis"] for res in results],
+                test_data=[report["results"]],
                 patient_info={
-                    "id": st.session_state.get("user_id", "Unknown"),
+                    "id": report["user_id"],
                     "name": st.session_state.get("username", "Patient")
                 }
             )
-            if "reports" not in st.session_state:
-                st.session_state.reports = []
+            
 
             report_entry = {
-                "filename": f"blood_analysis_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                "date": datetime.datetime.now().isoformat(),
+                "filename": f"blood_analysis_{report['date']}.pdf",
+                "date": report["date"],
                 "pdf_content": pdf_content
             }
+
+            if "reports" not in st.session_state:
+                st.session_state.reports = []
             
             st.session_state.reports.append(report_entry)
 
@@ -386,6 +394,25 @@ class BloodCancerApp:
                 mime="application/pdf",
                 key=f"download_report_{report_entry['date']}"
             )
+    
+
+    def fetch_reports(self):
+        """Fetches the latest analysis reports for the logged-in user."""
+        try:
+            response = requests.get(
+                f"{self.API_URL}/reports",
+                headers={"Authorization": f"Bearer {st.session_state.user_token}"}
+            )
+            
+            if response.status_code == 200:
+                st.session_state.reports = response.json()
+                logging.info(f"📊 {len(st.session_state.reports)} reports loaded successfully")
+            else:
+                st.error("⚠ Failed to load reports. Please try again.")
+
+        except Exception as e:
+            st.error(f"⚠ Error fetching reports: {str(e)}")
+
 
             
 
@@ -491,51 +518,62 @@ class BloodCancerApp:
             else:
                 st.warning("Please enter a patient ID")
 
+    
+
     def show_reports_page(self):
-        st.header("Medical Reports")
-        
-        if st.session_state.user_type == "doctor":
-            # Doctor view of reports
-            try:
-                response = requests.get(
-                    f"{self.API_URL}/active-patients",
-                    headers={"Authorization": f"Bearer {st.session_state.user_token}"}
-                )
-                
-                if response.status_code == 200:
-                    patients = response.json()
-                    st.subheader("High Risk Patients")
-                    
-                    for patient in patients:
-                        with st.expander(f"Patient: {patient['username']}"):
-                            st.write(f"Email: {patient['email']}")
-                            st.write(f"Last Login: {patient['last_login'] or 'Never'}")
-                            if st.button(f"View Details #{patient['id']}", key=f"details_{patient['id']}"):
-                                self.show_patient_history(patient['id'])
-                else:
-                    st.error("Failed to fetch high risk patients")
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-        else:
-            # Patient view of reports
-            try:
-                response = requests.get(
-                    f"{self.API_URL}/patient/{st.session_state.user_id}/history",
-                    headers={"Authorization": f"Bearer {st.session_state.user_token}"}
-                )
-                
-                if response.status_code == 200:
-                    analyses = response.json()
-                    for analysis in analyses:
-                        with st.expander(f"Analysis Report - {analysis['date']}"):
-                            self.display_analysis_results([{
-                                "filename": "Analysis",
-                                "analysis": analysis['results']
-                            }])
-                else:
-                    st.error("Failed to fetch your reports")
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+        st.header("📑 Medical Reports")
+        # Ensure reports are fetched if not available
+        if not st.session_state.reports:
+            st.warning("🔄 No reports found. Fetching latest reports...")
+            self.fetch_reports()
+    
+        # Refresh Reports Button
+        if st.button("🔄 Refresh Reports"):
+            self.fetch_reports()
+            st.success("✅ Reports refreshed successfully!")
+            st.rerun()
+
+        # Ensure reports exist
+        if not st.session_state.reports:
+            st.warning("⚠ No reports available!")
+            return
+
+        # ✅ FIX: Iterate through reports correctly
+        for report in st.session_state.reports:
+            if not isinstance(report, dict):  # Ensure report is a dictionary
+                logging.error("Invalid report format received")
+                continue  # Skip invalid reports
+            with st.expander(f"📅 Analysis Report - {report.get('date', 'Unknown')} | 🩸 Risk Level: {report.get('risk_level', 'Unknown')}"):
+                st.write(f"🆔 Report ID: {report.get('id', 'N/A')}")
+                st.write(f"📌 Risk Level: **{report.get('risk_level', 'Unknown')}**")
+                st.write(f"📜 Doctor Notes: {report.get('doctor_notes', 'No notes available')}")
+
+                # ✅ FIX: Ensure "results" exists before accessing
+                analysis_data = report.get("results", {})
+                if not analysis_data:
+                    st.warning("⚠ No results found for this report!")
+                    continue  # Skip this report
+
+                # Extract details
+                cell_counts = analysis_data.get("cell_counts", {})
+                risk_assessment = analysis_data.get("risk_assessment", "Unknown")
+                confidence_score = analysis_data.get("details", {}).get("confidence_score", "N/A")
+
+                # Display Blood Cell Analysis Table
+                if cell_counts:
+                    st.subheader("🧬 Blood Cell Analysis")
+                    df = [{"Cell Type": cell, "Percentage (%)": f"{value:.2f}%"} for cell, value in cell_counts.items()]
+                    st.table(df)
+
+                # Display Risk Assessment
+                st.subheader("📊 Risk Assessment")
+                st.write(f"**{risk_assessment}**")
+                st.write(f"🔍 Confidence Score: **{confidence_score:.2f}%**")
+
+                # ✅ FIX: Ensure Report Download Works
+                if st.button(f"📄 Download Report - {report['id']}", key=f"report_{report['id']}"):
+                    self.generate_report(report)
+
 
     def show_appointment_page(self):
         st.header("Book Appointment")

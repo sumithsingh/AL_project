@@ -333,6 +333,8 @@ async def analyze_image(
             }
         }
 
+        logging.info(f"✅ Analysis Data: {analysis_data}")
+
         analysis = Analysis(
             user_id=current_user.id,
             results=analysis_data,
@@ -357,6 +359,43 @@ async def analyze_image(
         raise HTTPException(status_code=500, detail="Image processing error")
     
 global_chatbot = FreeMedicalChatbot()
+
+@app.get("/reports", response_model=List[AnalysisResponse])
+async def get_reports(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetches all blood cancer analysis reports for the logged-in user.
+    """
+    try:
+        # Retrieve all reports for the logged-in user
+        reports = db.query(Analysis).filter(Analysis.user_id == current_user.id).order_by(Analysis.date.desc()).all()
+
+        if not reports:
+            logging.warning("⚠ No reports found for user!")
+            return []
+        formatted_reports = []
+
+        for report in reports:
+            formatted_reports.append(
+                {
+                    "id": report.id,
+                    "user_id": report.user_id,
+                    "date": report.date.isoformat(),
+                    "risk_level": report.risk_level,
+                    "results": report.results,
+                    "doctor_notes": report.doctor_notes if report.doctor_notes else "No notes available",
+                }
+            )
+
+        logging.info(f"📊 {len(reports)} reports fetched from the database")
+        return reports
+
+    except Exception as e:
+        logging.error(f"❌ Error fetching reports: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve reports.")
+
 
 @app.post("/chat")
 async def chat(
