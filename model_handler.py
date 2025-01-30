@@ -31,6 +31,11 @@ class ModelHandler:
         try:
             image = image.convert('L')
             image = image.resize((224, 224))
+            if image.size[0] < 100 or image.size[1] < 100:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Image resolution too low. Minimum 100x100 required."
+                )
             img_array = np.array(image, dtype=np.float32) / 255.0
             img_array = img_array.reshape((224, 224, 1))
             img_array = np.expand_dims(img_array, axis=0)
@@ -54,6 +59,13 @@ class ModelHandler:
             logging.info("📊 Running model prediction...")
             predictions = self.model.predict(img_array, verbose=0)
             logging.info(f"🧬 Raw Predictions: {predictions}")
+
+            if np.max(predictions) < 0.01:  # If all predictions are near zero
+                logging.error("❌ Model returned low-confidence predictions")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Model couldn't make confident prediction. Check image quality."
+                )
 
             if predictions is None or not isinstance(predictions, np.ndarray) or len(predictions) == 0:
                 logging.error("❌ Model returned empty predictions!")

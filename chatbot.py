@@ -278,7 +278,7 @@ class FreeMedicalChatbot:
                     "• Imaging Tests"
                 ])
             
-            return "I can provide information about blood cancer symptoms, diagnosis, treatment, and prevention. What would you like to know?"
+            return "Hey there, I can provide information about blood cancer symptoms, diagnosis, treatment, and prevention. What would you like to know?"
 
         # Group information by category
         categories = {}

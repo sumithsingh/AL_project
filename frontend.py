@@ -295,39 +295,65 @@ class BloodCancerApp:
                     st.image(file, caption=file.name, use_column_width=True)
             
             if st.button("Analyze Images"):
-                self.analyze_images(uploaded_files)
+                self.analyze_images_batch(uploaded_files)
 
-    def analyze_images(self, files):
-        with st.spinner("Analyzing images..."):
-            results = []
-            error_messages = []
-            
+    def analyze_images_batch(self, files):
+        with st.spinner("Analyzing images in one batch..."):
+            multiple_files = []
             for file in files:
-                try:
-                    files_data = {"file": (file.name, file.getvalue(), "image/jpeg")}
-                    response = requests.post(
-                        f"{self.API_URL}/analyze",
-                        files=files_data,
-                        headers={"Authorization": f"Bearer {st.session_state.get('user_token', '')}"}
-                    )
-                    
-                    if response.status_code == 200:
-                        analysis_data = response.json()
-                        results.append({"filename": file.name, "analysis": analysis_data})
-                    else:
-                        error_messages.append(f"Error analyzing {file.name}")
+                multiple_files.append(
+                    ("files", (file.name, file.getvalue(), "image/jpeg"))
+                )
+            try:
+                response = requests.post(
+                    f"{self.API_URL}/analyze-batch",
+                    files=multiple_files,
+                    headers={"Authorization": f"Bearer {st.session_state.get('user_token', '')}"}
+                )
 
-                       
-                    
-                    
-                except Exception as e:
-                    error_messages.append(f"{file.name}: {str(e)}")
+                if response.status_code == 200:
+                    final_analysis = response.json()
+                    self.display_overall_analysis(final_analysis)
+                else:
+                    st.error("Failed to analyze images in batch")
+            except Exception as e:
+                st.error(f"Batch analysis error: {str(e)}")
 
-        if error_messages:
-            st.error("Failed to analyze:\n- " + "\n- ".join(error_messages))
+    def display_overall_analysis(self, analysis_data):
+        st.subheader("Overall Batch Analysis")
+        risk_level = analysis_data.get("risk_level", "Unknown")
+        st.markdown(f"**Risk Level:** {risk_level}")
 
-        if results:
-            self.display_analysis_results(results)
+        # Retrieve 'results' dict (the final_analysis_data from backend)
+        results = analysis_data.get("results", {})
+
+        # 2) Format cell counts nicely in a table
+        cell_counts = results.get("cell_counts", {})
+        st.markdown("### Cell Counts:")
+        if cell_counts:
+            # Build a list of dicts so we can display them in a table
+            table_data = [
+                {"Cell": cell, "Percentage (%)": f"{val:.4f}"}
+                for cell, val in cell_counts.items()
+            ]
+            st.table(table_data)
+        else:
+            st.write("_No cell counts found_")
+
+        # 3) Show risk assessment
+        st.markdown("### Risk Assessment:")
+        st.write(results.get("risk_assessment", "N/A"))
+
+        # 4) Show recommendations as bullet points
+        st.markdown("### Recommendations:")
+        recs = results.get("recommendations", [])
+        if recs:
+            for rec in recs:
+                st.markdown(f"- {rec}")
+        else:
+            st.markdown("_No specific recommendations_")
+
+
 
     def display_analysis_results(self, results):
         st.subheader("Analysis Results")
@@ -348,9 +374,9 @@ class BloodCancerApp:
 
             row = {
                 'Filename': result['filename'],
-                'Risk Level': risk_assessment.split(' - ')[0],
-                'Confidence Score': f"{confidence_score:.1f}%",
-                **cell_counts  
+                'Risk Level': analysis.get('risk_level', 'Unknown'),  # Direct access
+                'Confidence Score': confidence_score,
+                **analysis.get('cell_counts', {})
             }
             result_data.append(row)
         

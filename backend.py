@@ -303,60 +303,111 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
         "user_id": user.id
     }
 
-@app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_image(
-    file: UploadFile = File(...),
+
+@app.post("/analyze-batch")
+async def analyze_batch(
+    files: List[UploadFile] = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """
+    Analyzes multiple images in a single batch,
+    aggregates the cell counts, computes a single risk level,
+    and returns one final analysis result.
+    """
     try:
-        if not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="Only image files are allowed")
+        if not files:
+            raise HTTPException(status_code=400, detail="No files uploaded")
+        
+        # 1) Initialize accumulators
+        total_cell_counts = {
+            "monocyte": 0.0,
+            "myeloblast": 0.0,
+            "erythroblast": 0.0,
+            "segmented_neutrophil": 0.0,
+            "basophil": 0.0
+        }
+        num_images = len(files)
 
-        image_data = await file.read()
-        image = Image.open(io.BytesIO(image_data))
+        # 2) Process each image
+        for file in files:
+            if not file.content_type.startswith('image/'):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{file.filename} is not an image"
+                )
 
-        processed_image = model_handler.preprocess_image(image)
-        predictions = model_handler.get_predictions(processed_image)
+            image_data = await file.read()
+            image = Image.open(io.BytesIO(image_data))
 
-        risk_level, risk_message = model_handler.assess_risk(predictions)
+            processed_image = model_handler.preprocess_image(image)
+            predictions = model_handler.get_predictions(processed_image)
+
+            # Convert predictions -> cell_counts
+            cell_counts = {
+                cell: float(prob * 100)
+                for cell, prob in zip(model_handler.classes, predictions)
+            }
+            # Accumulate
+            for cell, val in cell_counts.items():
+                total_cell_counts[cell] += val
+
+        # 3) Average the cell counts across all images
+        for cell in total_cell_counts:
+            total_cell_counts[cell] /= num_images
+
+        # 4) Determine final risk based on aggregated myeloblast, etc.
+        aggregated_myeloblast = total_cell_counts["myeloblast"]
+        aggregated_erythroblast = total_cell_counts["erythroblast"]
+
+        if aggregated_myeloblast > 20 or aggregated_erythroblast > 10:
+            risk_level = "High"
+            risk_message = "Immediate medical attention required"
+        elif aggregated_myeloblast > 10 or aggregated_erythroblast > 5:
+            risk_level = "Moderate"
+            risk_message = "Further evaluation recommended"
+        else:
+            risk_level = "Low"
+            risk_message = "Regular monitoring advised"
+
+        # 5) Generate recommendations
         recommendations = model_handler.generate_recommendations(risk_level)
 
-        analysis_data = {
-            "cell_counts": {cell: float(pred * 100) for cell, pred in zip(model_handler.classes, predictions)},
-            "risk_assessment": risk_message if risk_message else "Unknown",
-            "recommendations": recommendations if recommendations else ["No recommendations available"],
+        final_analysis_data = {
+            "cell_counts": total_cell_counts,
+            "risk_assessment": f"{risk_level} - {risk_message}",
+            "recommendations": recommendations,
             "details": {
-                "myeloblast_percentage": float(predictions[model_handler.classes.index('myeloblast')] * 100),
                 "analysis_date": datetime.utcnow().isoformat(),
-                "confidence_score": float(np.max(predictions) * 100)
+                # confidence_score might not make sense aggregated,
+                # but you can do an average if you want
+                "confidence_score": 0.0
             }
         }
 
-        logging.info(f"✅ Analysis Data: {analysis_data}")
-
+        # 6) Create one Analysis entry for entire batch
         analysis = Analysis(
             user_id=current_user.id,
-            results=analysis_data,
+            results=final_analysis_data,
             risk_level=risk_level,
             date=datetime.utcnow()
         )
-
         db.add(analysis)
         db.commit()
         db.refresh(analysis)
 
+        # Return final aggregated analysis
         return {
             "id": analysis.id,
             "user_id": analysis.user_id,
             "date": analysis.date.isoformat(),
-            "results": analysis.results,
-            "risk_level": analysis.risk_level
+            "risk_level": analysis.risk_level,
+            "results": analysis.results
         }
 
     except Exception as e:
-        logging.error(f"Analysis error: {e}")
-        raise HTTPException(status_code=500, detail="Image processing error")
+        logging.error(f"Error in batch analysis: {e}")
+        raise HTTPException(status_code=500, detail="Batch image processing error")
     
 global_chatbot = FreeMedicalChatbot()
 
