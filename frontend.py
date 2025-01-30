@@ -45,89 +45,9 @@ class BloodCancerApp:
             else:
                 self.show_doctor_interface()
 
-    def set_custom_css(self):
-        st.markdown("""
-            <style>
-            .stButton button {
-                width: 100%;
-                border-radius: 20px;
-                background-color: #2A3B8F;
-                color: white;
-            }
-            .chat-container {
-                background: white;
-                border-radius: 10px;
-                padding: 20px;
-                margin-top: 10px;
-                box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            }
-            .assistant-message {
-                background: #E3F2FD;
-                padding: 10px 15px;
-                border-radius: 15px;
-                margin: 5px 0;
-            }
-            .user-message {
-                background: #F5F5F5;
-                padding: 10px 15px;
-                border-radius: 15px;
-                margin: 5px 0;
-                text-align: right;
-            }
-            .upload-section {
-                border: 2px dashed #1E88E5;
-                border-radius: 10px;
-                padding: 20px;
-                text-align: center;
-            }
-            .results-container {
-                margin-top: 20px;
-                padding: 20px;
-                border-radius: 10px;
-                background: white;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            }
-            .metric-container {
-                padding: 10px;
-                border-radius: 8px;
-                background: #f8f9fa;
-                margin: 5px 0;
-            }
-            .emergency-alert {
-                background-color: #ffebee;
-                color: #c62828;
-                padding: 1rem;
-                border-radius: 0.5rem;
-                margin: 1rem 0;
-                border: 1px solid #ef5350;
-            }
-            .relevant-info {
-                background-color: #2c3e50;
-                color: #ecf0f1;
-                padding: 1rem;
-                border-radius: 0.5rem;
-                margin: 0.5rem 0;
-            }
-            .relevant-info strong {
-                    font-weight: bold;
-                    color: #3498db;
-            }
-            .stButton button {
-                    background-color: #2980b9; /* Change button color to a stronger blue */
-            }
-            .stButton button:hover {
-                    background-color: #1abc9c; /* Green hover effect */
-            }
-            .chat-meta {
-                font-size: 0.8rem;
-                color: #666;
-                margin-top: 0.25rem;
-            }
-            </style>
-        """, unsafe_allow_html=True)
 
     def show_auth_page(self):
-        st.title("Blood Cancer Detection System")
+        st.title("𝑯𝒆𝒎𝒂𝑩𝒓𝒊𝒅𝒈𝒆 𝑨𝑰-𝑫𝒓𝒊𝒗𝒆𝒏 𝑩𝒍𝒐𝒐𝒅 𝑪𝒂𝒏𝒄𝒆𝒓 𝑫𝒆𝒕𝒆𝒄𝒕𝒊𝒐𝒏 & 𝑪𝒂𝒓𝒆 ")
         
         auth_action = st.radio("Choose action", ["Login", "Sign Up"])
         
@@ -193,7 +113,7 @@ class BloodCancerApp:
             st.error(f"Connection error: {str(e)}")
 
     def show_patient_interface(self):
-        st.title("Patient Dashboard")
+        st.title("𝙃𝙚𝙢𝙖𝘽𝙧𝙞𝙙𝙜𝙚 – 𝙋𝙖𝙩𝙞𝙚𝙣𝙩 𝙋𝙤𝙧𝙩𝙖𝙡")
         
         with st.sidebar:
             st.title("Navigation")
@@ -219,21 +139,136 @@ class BloodCancerApp:
             self.show_reports_page()
         elif selected_page == "Book Appointment":
             self.show_appointment_page()
+    
+    def set_custom_css(self):
+        st.markdown("""
+        <style>
+        /* Make the entire background use our image */
+        body, .stApp {
+            background: url("/assets/background.jpg") no-repeat center center fixed;
+            background-size: cover;
+            
+        }
+        
+        /* Optional: Add a dark overlay so text remains visible */
+        .stApp {
+            background-color: rgba(0,0,0,0.6);
+            background-blend-mode: darken;
+            color: #f8f9fa;
+        }
+        /* Brighten headings or text if needed */
+        h1, h2, h3, h4 {
+            color: #ffffff;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+                    
+        /* Container for the chat area */
+        .chat-container {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            background: none; /* No big white bar */
+            padding: 0;
+        }
+
+        /* Clear floats for each message block */
+        .bubble-container::after {
+            content: "";
+            clear: both;
+            display: table;
+        }
+
+        /* Assistant bubble: light background, dark text, margin-left for avatar spacing */
+        .assistant-bubble {
+            background: #E3F2FD;   /* Light blue */
+            color: #111;          /* Dark text for contrast */
+            padding: 10px 15px;
+            border-radius: 12px;
+            margin: 5px 0;
+            display: inline-block;
+            max-width: 60%;
+            float: left;
+            margin-left: 70px;    /* Space so avatar isn't overlapped */
+            position: relative;
+        }
+
+        /* User bubble: darker background, white text, aligned right */
+        .user-bubble {
+            background: #333;
+            color: #FFF;
+            padding: 10px 15px;
+            border-radius: 12px;
+            margin: 5px 0;
+            display: inline-block;
+            max-width: 60%;
+            float: right;
+            text-align: right;
+            position: relative;
+        }
+
+        /* The doctor avatar: pinned left, round, no overlap, fully visible */
+        .avatar {
+            width: 60px;
+            height: auto;
+            float: left;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            object-fit: contain;
+        }
+
+        /* Timestamp styling inside each bubble, small & subtle */
+        .bubble-timestamp {
+            display: block;
+            text-align: right;
+            font-size: 0.75em;
+            color: #777;
+            margin-top: 5px;
+        }
+
+        </style>
+        """, unsafe_allow_html=True)
+
+    
+
 
     def show_chat_interface(self):
-        st.header("Chat with AI Assistant")
+        """Chat interface with bubble styling + avatar, and optional auto-end logic."""
+        st.header("Chat Support 24x7")
+
+        # 1) Start a container for the entire chat area
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
         
-        # Display chat history with proper formatting
+        # 2) Greet user if not greeted
+        if "chatbot_greeted" not in st.session_state:
+            st.session_state.chatbot_greeted = False
+            
+        if not st.session_state.chatbot_greeted:
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": "Hello! I'm Dr. Clara, your AI Assistant. How can I help you today?",
+                "timestamp": datetime.datetime.now().strftime("%H:%M")
+            })
+            st.session_state.chatbot_greeted = True
+
+        # 3) Display messages as HTML bubble containers
         for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]):
-                # Display main response
-                st.markdown(msg["content"])
-                
-                # Display emergency alert if needed
+            if msg["role"] == "assistant":
+                # Assistant bubble with avatar
+                st.markdown(f"""
+                <div class="bubble-container">
+                    <img src="https://img.freepik.com/free-psd/3d-render-female-doctor-wearing-glasses-white-coat-stethoscope-around-her-neck-she-has-dark-hair-friendly-expression_632498-32065.jpg?t=st=1738264700~exp=1738268300~hmac=892defdb73f2d4887415cae24cec26252f75844e5a755fd565baca778cde35c4&w=740" class="avatar" />
+                    <div class="assistant-bubble">
+                        {msg["content"]}
+                        <div style="font-size: 0.75em; margin-top: 4px; text-align: right; color: #666;">
+                            {msg.get("timestamp", "")}
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # If there's emergency or relevant info, handle it
                 if msg.get("is_emergency"):
                     st.error("⚠️ EMERGENCY: Seek immediate medical attention!")
-                
-                # Display relevant information expander
                 if msg.get("relevant_info"):
                     with st.expander("Related Medical Information", expanded=True):
                         for info in msg["relevant_info"]:
@@ -243,38 +278,65 @@ class BloodCancerApp:
                                 <div class='chat-meta'>Relevance: {info['relevance_score']:.2f}</div>
                             </div>
                             """, unsafe_allow_html=True)
-        
-        # Input handling
-        if prompt := st.chat_input("Type your message..."):
-            self._handle_chat_input(prompt)
 
-    def _handle_chat_input(self, prompt: str):
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
-        
+            elif msg["role"] == "user":
+                st.markdown(f"""
+                <div class="bubble-container">
+                    <div class="user-bubble">
+                        {msg["content"]}
+                        <div style="font-size: 0.75em; margin-top: 4px; text-align: right; color: #aaa;">
+                            {msg.get("timestamp", "")}
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            # 4) Provide a chat input
+        if user_input := st.chat_input("Type your message..."):
+            self._handle_chat_input(user_input)
+        # End the container
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    def _handle_chat_input(self, prompt: str, timestamp=None):
+
+        if timestamp is None:
+            timestamp = datetime.datetime.now().strftime("%H:%M")
+
+        user_msg = {
+            "role": "user",
+            "content": prompt,
+            "timestamp": timestamp
+        }
+        st.session_state.chat_history.append(user_msg)
+        # Example: auto-end logic if user says "bye" ...
+        lower_prompt = prompt.strip().lower()
+        end_phrases = ["that's it", "bye", "nothing else", "i'm done", "end chat", "merci"]
+        if any(phrase in lower_prompt for phrase in end_phrases):
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": "Thank you for chatting with me! Have a wonderful day.",
+                "timestamp": datetime.datetime.now().strftime("%H:%M")
+            })
+            return
+        # Otherwise, call the backend /chat
         try:
             response = requests.post(
                 f"{self.API_URL}/chat",
                 headers={"Authorization": f"Bearer {st.session_state.user_token}"},
-                json={
-                    "text": prompt,
-                    "language": st.session_state.language
-                }
+                json={"text": prompt, "language": st.session_state.language}
             )
-            
             if response.status_code == 200:
                 data = response.json()
                 st.session_state.chat_history.append({
                     "role": "assistant",
                     "content": data["response"],
+                    "timestamp": datetime.datetime.now().strftime("%H:%M"),
                     "relevant_info": data.get("relevant_info", []),
                     "is_emergency": data.get("is_emergency", False)
                 })
             else:
                 st.error("Failed to get chatbot response")
-                
         except Exception as e:
             st.error(f"Chat error: {str(e)}")
-        
         st.rerun()
 
     def show_upload_page(self):
@@ -288,11 +350,14 @@ class BloodCancerApp:
         
         if uploaded_files:
             st.write(f"Number of files uploaded: {len(uploaded_files)}")
+
+            sample_files = uploaded_files[:3]
+            st.write(f"Showing up to {len(sample_files)} sample images...")
             
             cols = st.columns(3)
-            for idx, file in enumerate(uploaded_files):
+            for idx, file in enumerate(sample_files):
                 with cols[idx % 3]:
-                    st.image(file, caption=file.name, use_column_width=True)
+                    st.image(file, caption=file.name, use_container_width=True)
             
             if st.button("Analyze Images"):
                 self.analyze_images_batch(uploaded_files)
@@ -445,13 +510,13 @@ class BloodCancerApp:
             
 
     def show_doctor_interface(self):
-        st.title("Doctor Dashboard")
+        st.title("𝑯𝒆𝒎𝒂𝑩𝒓𝒊𝒅𝒈𝒆 – 𝑫𝒐𝒄𝒕𝒐𝒓 𝑷𝒐𝒓𝒕𝒂𝒍")
         
         with st.sidebar:
             st.title("Navigation")
             selected_page = st.radio(
                 "Choose a page",
-                ["Patient List", "Search Patient", "Upload Analysis", "Reports"]
+                ["Patient List", "Search Patient", "Upload Analysis", "Reports", "Appointments"]
             )
             
             if st.button("Logout"):
@@ -465,6 +530,8 @@ class BloodCancerApp:
             self.show_upload_page()
         elif selected_page == "Reports":
             self.show_reports_page()
+        elif selected_page == "Appointments":
+            self.show_doctor_appointments_list()
 
     def show_patient_list(self):
         st.header("Patient List")
@@ -487,8 +554,23 @@ class BloodCancerApp:
         except Exception as e:
             st.error(f"Error: {str(e)}")
     
-
+    def fetch_doctors(self):
+        """Fetches the list of doctors from the backend."""
+        try:
+            response = requests.get(
+                f"{self.API_URL}/doctors",
+                headers={"Authorization": f"Bearer {st.session_state.get('user_token', '')}"}
+            )
+            if response.status_code == 200:
+                return response.json()  # Expect a list like [{"id":1,"username":"Dr.X"},...]
+            else:
+                st.error("Failed to load doctors list")
+                return []
+        except Exception as e:
+            st.error(f"Error loading doctors: {str(e)}")
+            return []
     def show_patient_history(self, patient_id):
+        st.subheader(f"Patient History (ID: {patient_id})")
         try:
             response = requests.get(
                 f"{self.API_URL}/patient/{patient_id}/history",
@@ -500,17 +582,9 @@ class BloodCancerApp:
                 st.subheader(f"Patient History")
                 
                 for analysis in data:
-                    with st.expander(f"Analysis from {analysis['date']}"):
-                        self.display_analysis_results([{"filename": "Analysis", "analysis": analysis['results']}])
-                        
-                        # Add doctor notes
-                        notes = st.text_area(
-                            "Doctor Notes",
-                            value=analysis.get('doctor_notes', ''), 
-                            key=f"notes_{analysis['id']}"
-                        )
-                        if st.button("Save Notes", key=f"save_{analysis['id']}"):
-                            self.save_doctor_notes(patient_id, analysis['id'], notes)
+                    st.subheader(f"Analysis from {analysis['date']}")
+                    st.write(f"Risk Level: {analysis['risk_level']}")
+                    
             else:
                 st.error("Failed to fetch patient history")
         except Exception as e:
@@ -544,7 +618,30 @@ class BloodCancerApp:
             else:
                 st.warning("Please enter a patient ID")
 
-    
+    def display_appointments(self):
+        """Retrieves and displays the current user's appointments."""
+        st.subheader("Your Appointments")
+        try:
+            response = requests.get(
+                f"{self.API_URL}/appointments",
+                headers={"Authorization": f"Bearer {st.session_state.get('user_token', '')}"}
+            )
+            if response.status_code == 200:
+                appointments = response.json()
+                if not appointments:
+                    st.info("No upcoming appointments.")
+                    return
+                for apt in appointments:
+                    with st.expander(f"Appointment on {apt['date']} - {apt['status']}"):
+                        st.write(f"Doctor ID: {apt['doctor_id']}")
+                        st.write(f"Patient ID: {apt['patient_id']}")
+                        if apt.get("notes"):
+                            st.write(f"Notes: {apt['notes']}")
+            else:
+                st.error("Failed to load appointments.")
+        except Exception as e:
+            st.error(f"Error fetching appointments: {str(e)}")
+
 
     def show_reports_page(self):
         st.header("📑 Medical Reports")
@@ -603,99 +700,88 @@ class BloodCancerApp:
 
     def show_appointment_page(self):
         st.header("Book Appointment")
-        
-        if st.session_state.user_type == "patient":
-            try:
-                # Get available doctors
-                response = requests.get(
-                    f"{self.API_URL}/doctors",
-                    headers={"Authorization": f"Bearer {st.session_state.user_token}"}
-                )
-                
-                if response.status_code == 200:
-                    doctors = response.json()
-                    
-                    # Appointment booking form
-                    with st.form("appointment_form"):
-                        selected_doctor = st.selectbox(
-                            "Select Doctor",
-                            options=[(d['id'], d['username']) for d in doctors],
-                            format_func=lambda x: x[1]
-                        )
-                        
-                        appointment_date = st.date_input("Select Date")
-                        appointment_time = st.time_input("Select Time")
-                        notes = st.text_area("Notes (Optional)")
-                        
-                        if st.form_submit_button("Book Appointment"):
-                            appointment_datetime = datetime.combine(
-                                appointment_date,
-                                appointment_time
-                            )
-                            
 
-                            response = requests.post(
-                                f"{self.API_URL}/appointment",
-                                headers={"Authorization": f"Bearer {st.session_state.user_token}"},
-                                json={
-                                    "doctor_id": selected_doctor[0],
-                                    "date": appointment_datetime.isoformat(),
-                                    "notes": notes
-                                }
-                            )
-                            
-                            if response.status_code == 200:
-                                st.success("Appointment booked successfully!")
-                            else:
-                                st.error("Failed to book appointment")
-                
-                # Display existing appointments
-                response = requests.get(
-                    f"{self.API_URL}/appointments",
-                    headers={"Authorization": f"Bearer {st.session_state.user_token}"}
-                )
-                
-                if response.status_code == 200:
-                    appointments = response.json()
-                    if appointments:
-                        st.subheader("Your Appointments")
-                        for apt in appointments:
-                            with st.expander(f"Appointment on {apt['date']}"):
-                                st.write(f"Status: {apt['status']}")
-                                if apt.get('notes'):
-                                    st.write(f"Notes: {apt['notes']}")
-                
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-        else:
-            # Doctor's view of appointments
+        # 1) Fetch doctors
+        doctors = self.fetch_doctors()
+        if not doctors:
+            st.warning("No doctors available currently.")
+            return
+
+        # Build a list of (doctor_id, doctor_name) for the selectbox
+        doc_options = [(doc["id"], doc["username"]) for doc in doctors]
+        selected_doc = st.selectbox(
+            label="Select Doctor",
+            options=doc_options,
+            format_func=lambda x: x[1]  # shows the doc's username in the dropdown
+        )
+
+        # 2) Date & Time inputs
+        appt_date = st.date_input("Select Date")
+        appt_time = st.time_input("Select Time")
+    
+        import datetime
+        # Combine them
+        appointment_datetime = None
+        if appt_date and appt_time:
+            appointment_datetime = datetime.datetime.combine(appt_date, appt_time)
+
+        # 3) Notes
+        notes = st.text_area("Additional Notes (Optional)")
+
+        # 4) Book button
+        if st.button("Book Appointment"):
+            if appointment_datetime is None:
+                st.error("Please select a valid date and time.")
+                return
             try:
-                response = requests.get(
-                    f"{self.API_URL}/appointments",
-                    headers={"Authorization": f"Bearer {st.session_state.user_token}"}
+                response = requests.post(
+                    f"{self.API_URL}/appointment",
+                    headers={"Authorization": f"Bearer {st.session_state.get('user_token', '')}"},
+                    json={
+                        "doctor_id": selected_doc[0],
+                        "date": appointment_datetime.isoformat(),
+                        "notes": notes
+                    }
                 )
-                
                 if response.status_code == 200:
-                    appointments = response.json()
-                    if appointments:
-                        st.subheader("Your Appointments")
-                        for apt in appointments:
-                            with st.expander(f"Appointment with {apt['patient_id']} on {apt['date']}"):
-                                st.write(f"Status: {apt['status']}")
-                                if apt.get('notes'):
-                                    st.write(f"Notes: {apt['notes']}")
-                                
-                                # Add option to update appointment status
-                                new_status = st.selectbox(
-                                    "Update Status",
-                                    options=["scheduled", "completed", "cancelled"],
-                                    key=f"status_{apt['id']}"
-                                )
-                                if st.button("Update Status", key=f"update_{apt['id']}"):
-                                    self.update_appointment_status(apt['id'], new_status)
-            
+                    st.success("Appointment booked successfully!")
+                else:
+                    st.error("Failed to book appointment. Please try again.")
             except Exception as e:
-                st.error(f"Error: {str(e)}")
+                st.error(f"Error booking appointment: {str(e)}")
+
+        # 5) Show existing appointments
+        self.display_appointments()
+
+    def show_doctor_appointments_list(self):
+        st.header("Upcoming Appointments")
+        
+        try:
+            response = requests.get(
+                f"{self.API_URL}/appointments",
+                headers={"Authorization": f"Bearer {st.session_state.get('user_token', '')}"}
+            )
+            if response.status_code == 200:
+                appointments = response.json()
+                
+                if not appointments:
+                    st.info("No upcoming appointments found.")
+                    return
+            
+                # Loop over each appointment
+                for apt in appointments:
+                    with st.expander(f"Appointment on {apt['date']} - {apt['status']}"):
+                        st.write(f"Patient ID: {apt['patient_id']}")
+                        st.write(f"Doctor ID: {apt['doctor_id']}")  
+                        st.write(f"Status: {apt['status']}")
+                        if apt.get('notes'):
+                            st.write(f"Notes: {apt['notes']}")
+            else:
+                st.error("Failed to fetch appointments.")
+        except Exception as e:
+            st.error(f"Error fetching appointments: {str(e)}")
+
+
 
     def update_appointment_status(self, appointment_id: int, status: str):
         try:

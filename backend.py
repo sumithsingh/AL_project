@@ -539,6 +539,26 @@ async def get_appointments(
     else:
         return db.query(Appointment).filter(Appointment.patient_id == current_user.id).all()
 
+@app.get("/doctors")
+async def get_doctors(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns a list of doctors (users with role='doctor').
+    """
+    try:
+        # Optionally, you can restrict to only patients
+        if current_user.role != "patient":
+            raise HTTPException(status_code=403, detail="Not authorized to view doctors")
+
+        doctors = db.query(User).filter(User.role == "doctor", User.is_active == True).all()
+        return [{"id": doc.id, "username": doc.username} for doc in doctors]
+    except Exception as e:
+        logging.error(f"Error fetching doctors: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve doctors.")
+
+
 @app.get("/active-patients", response_model=List[UserResponse])
 async def get_active_patients(
     current_user: User = Depends(get_current_user),
