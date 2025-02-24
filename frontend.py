@@ -145,7 +145,7 @@ class BloodCancerApp:
         <style>
         /* Make the entire background use our image */
         body, .stApp {
-            background: url("https://img.freepik.com/vecteurs-libre/design-elegant-abstrait-low-poly_1048-13699.jpg?t=st=1738322006~exp=1738325606~hmac=27155e5e0bf5ff5201e3a6185c18f95716ade441027cc9f11e8d99b61a6bc0c7&w=1380") no-repeat center center fixed;
+            background: url("https://img.freepik.com/free-psd/modern-abstract-deep-blue-gradient-background_84443-3754.jpg?t=st=1740431237~exp=1740434837~hmac=3d121e0c0d3f311d0a1fde5e7f6e15adbdd89b7ca631d512d0f11faf4c03e349&w=1800") no-repeat center center fixed;
             background-size: cover;
             
         }
