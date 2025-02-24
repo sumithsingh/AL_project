@@ -1,19 +1,41 @@
-scikit-learn==1.5.0
-tensorflow==2.18.0
-tensorflow-io-gcs-filesystem
+# Web Framework
 fastapi==0.115.7
 uvicorn[standard]==0.34.0
-pydantic==2.10.6
-sqlalchemy==2.0.37
-python-jose==3.3.0
+starlette==0.45.3
 python-multipart==0.0.20
-python-dotenv==1.0.1
+
+# Authentication
+PyJWT==2.10.1
+python-jose==3.3.0
 passlib==1.7.4
 bcrypt==4.2.1
-pillow==11.1.0
-numpy==2.0.2
-email-validator==2.1.0
+ecdsa==0.19.0
+
+# Database
+sqlalchemy==2.0.37
 psycopg2-binary==2.9.10
+greenlet==3.1.1
+
+# Data Validation
+pydantic==2.10.6
+pydantic-core==2.27.2
+email-validator==2.1.0
+python-dotenv==1.0.1
+
+# Machine Learning & Data Science
+scikit-learn==1.5.0
+tensorflow==2.18.0
+tensorflow-io-gcs-filesystem==0.37.1
+numpy==2.0.2
 pandas==2.2.3
 nltk==3.8.1
 scipy==1.13.0
+matplotlib==3.10.0
+
+# Image Processing
+pillow==11.1.0
+
+# Utilities
+requests==2.32.3
+rich==13.9.4
+tqdm==4.67.1
