@@ -6,12 +6,28 @@ from PIL import Image
 import io
 import datetime
 
+import threading
+import uvicorn
+import time
+from backend import app as fastapi_app
+
 class BloodCancerApp:
     def __init__(self):
         # Set the API URL for your backend service
         self.API_URL = "http://localhost:8000"
+
+        # Start FastAPI in a background thread
+        if 'api_started' not in st.session_state:
+            threading.Thread(target=self.start_backend, daemon=True).start()
+            st.session_state.api_started = True
+            # Give the server a moment to start
+            time.sleep(2)
+    
         # Initialize session state
         self.initialize_session()
+    def start_backend(self):
+        """Start the FastAPI backend in a separate thread"""
+        uvicorn.run(fastapi_app, host="127.0.0.1", port=8000)
     
     def initialize_session(self):
         # Initialize session state variables if they are not already set
