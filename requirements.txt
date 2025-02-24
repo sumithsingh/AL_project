@@ -1,6 +1,8 @@
+scikit-learn==1.5.0
+tensorflow==2.18.0
+tensorflow-io-gcs-filesystem
 fastapi==0.115.7
-uvicorn==0.34.0
-uvicorn[standard]
+uvicorn[standard]==0.34.0
 pydantic==2.10.6
 sqlalchemy==2.0.37
 python-jose==3.3.0
@@ -12,5 +14,6 @@ pillow==11.1.0
 numpy==2.0.2
 email-validator==2.1.0
 psycopg2-binary==2.9.10
-tensorflow==2.18.0
-tensorflow-io-gcs-filesystem
+pandas==2.2.3
+nltk==3.8.1
+scipy==1.13.0
